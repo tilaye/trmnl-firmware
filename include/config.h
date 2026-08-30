@@ -113,8 +113,8 @@ enum WIFI_CONNECT_RETRY_TIME // Time to sleep before trying to connect to the Wi
 // Stock firmware watches only the green one. Wake on all three via ext1 and
 // report which one in Update-Source; the server assigns the meanings.
 #define MULTI_BUTTON_WAKEUP
-#define PIN_BUTTON_A 5          // left white
-#define PIN_BUTTON_B 4          // right white
+#define PIN_BUTTON_A 4          // reported as button_a
+#define PIN_BUTTON_B 5          // reported as button_b
 #define BUTTON_WAKEUP_MASK ((1ULL << PIN_INTERRUPT) | (1ULL << PIN_BUTTON_A) | (1ULL << PIN_BUTTON_B))
 #define PIN_VBAT_SWITCH 21      //load switch enable pin for battery voltage measurement
 #define VBAT_SWITCH_LEVEL HIGH  //load switch enable pin active level
