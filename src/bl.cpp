@@ -2313,7 +2313,11 @@ static uint8_t *storedLogoOrDefault(int iType)
    uint16_t u16Size;
    BRAND *pBrand;
 
-   u32Size = ESP.getFlashChipSize();
+   // ESP.getFlashChipSize() returns the size stamped in the bootloader image
+   // header (4MB in TRMNL's merged bins, and can even read 0 on the S3, where
+   // the bootloader sits at 0x0 rather than 0x1000). Ask the flash chip itself
+   // so the BRAND blob is read from the true end of flash.
+   if (esp_flash_get_size(NULL, &u32Size) != ESP_OK) u32Size = 0;
    Log_info("%s [%d]: esp flash size: %d\r\n", __FILE__, __LINE__, u32Size);
    if (u32Size != 0) {
    pBrand = (BRAND *)malloc(sizeof(BRAND)); // DEBUG - we can leak this memory for now
