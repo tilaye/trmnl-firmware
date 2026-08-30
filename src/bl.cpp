@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "driver/rtc_io.h"
 #include <WiFi.h>
 #include <bl.h>
 #include <trmnl_log.h>
@@ -67,6 +68,9 @@ bool send_log = false;        // need to send logs
 bool double_click = false;
 bool log_retry = false;                                              // need to log connection retry
 esp_sleep_wakeup_cause_t wakeup_reason = ESP_SLEEP_WAKEUP_UNDEFINED; // wake-up reason
+#ifdef MULTI_BUTTON_WAKEUP
+static uint64_t ext1_wake_bits = 0; // which ext1 pin(s) woke us
+#endif
 MSG current_msg = NONE;
 SPECIAL_FUNCTION special_function = SF_NONE;
 RTC_DATA_ATTR uint8_t need_to_refresh_display = 1;
@@ -196,7 +200,22 @@ void bl_init(void)
 #endif
 
   wakeup_reason = esp_sleep_get_wakeup_cause();
-
+#ifdef MULTI_BUTTON_WAKEUP
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1)
+  {
+    ext1_wake_bits = esp_sleep_get_ext1_wakeup_status();
+    Log_info("ext1 wake bits=0x%llx", (unsigned long long)ext1_wake_bits);
+  }
+  // A wake from one of the extra buttons is a plain press: skip the green
+  // button's press classification (it only reads PIN_INTERRUPT and would
+  // idle through the double-click window).
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1 && ext1_wake_bits != 0
+      && (ext1_wake_bits & (1ULL << PIN_INTERRUPT)) == 0)
+  {
+    Log_info("extra-button wakeup, skipping press classification");
+  }
+  else
+#endif
   if (wakeup_reason == ESP_SLEEP_WAKEUP_GPIO || wakeup_reason == ESP_SLEEP_WAKEUP_EXT0 || wakeup_reason == ESP_SLEEP_WAKEUP_EXT1)
   {
     Log_info("GPIO wakeup detected (%d)", wakeup_reason);
@@ -613,6 +632,19 @@ ApiDisplayInputs loadApiDisplayInputs(Preferences &preferences)
   {
     inputs.updateSource = "unknown";
   }
+#ifdef MULTI_BUTTON_WAKEUP
+  // Report WHICH button woke us; the green one keeps the stock "button"
+  // string so an unpatched server sees no difference.
+  if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT1 && ext1_wake_bits != 0)
+  {
+    if (ext1_wake_bits & (1ULL << PIN_INTERRUPT))
+      inputs.updateSource = "button";
+    else if (ext1_wake_bits & (1ULL << PIN_BUTTON_A))
+      inputs.updateSource = "button_a";
+    else if (ext1_wake_bits & (1ULL << PIN_BUTTON_B))
+      inputs.updateSource = "button_b";
+  }
+#endif
 
   if (preferences.isKey(PREFERENCES_API_KEY))
   {
@@ -1989,7 +2021,21 @@ static void goToSleep(void)
 #elif CONFIG_IDF_TARGET_ESP32C3
   esp_deep_sleep_enable_gpio_wakeup(1 << PIN_INTERRUPT, ESP_GPIO_WAKEUP_GPIO_LOW);
 #elif CONFIG_IDF_TARGET_ESP32S3
+#ifdef MULTI_BUTTON_WAKEUP
+  // Wake on any of the three buttons (all RTC-capable GPIOs on the S3). The
+  // white buttons have no external pull-ups, so hold the internal RTC pulls
+  // through deep sleep or they float and fire phantom wakes.
+  for (gpio_num_t p : {(gpio_num_t)PIN_INTERRUPT, (gpio_num_t)PIN_BUTTON_A, (gpio_num_t)PIN_BUTTON_B})
+  {
+    rtc_gpio_init(p);
+    rtc_gpio_set_direction(p, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_en(p);
+    rtc_gpio_pulldown_dis(p);
+  }
+  esp_sleep_enable_ext1_wakeup(BUTTON_WAKEUP_MASK, ESP_EXT1_WAKEUP_ANY_LOW);
+#else
   esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_INTERRUPT, 0);
+#endif
 #else
 #error "Unsupported ESP32 target for GPIO wakeup configuration"
 #endif
