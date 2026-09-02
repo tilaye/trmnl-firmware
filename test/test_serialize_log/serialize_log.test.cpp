@@ -93,6 +93,30 @@ void test_serialize_log_with_retry(void)
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), result.c_str());
 }
 
+// The version in the fixtures above is "1.2.3" — five characters, which fit
+// current_fw_version when it was char[10] and so proved nothing about the
+// field's width. A real build stamps its commit into the version
+// (FW_VERSION_SUFFIX, see include/config.h), and bl.cpp copies that in with
+// snprintf, which truncates in silence rather than failing. This test carries
+// a stamped version through the same copy so the buffer can never quietly
+// shrink under it again.
+void test_serialize_log_keeps_a_stamped_version_whole(void)
+{
+  const char stamped[] = "1.8.0+g3fb5ecb";
+
+  auto stampedInput = input;
+  snprintf(stampedInput.deviceStatusStamp.current_fw_version,
+           sizeof(stampedInput.deviceStatusStamp.current_fw_version),
+           "%s", stamped);
+
+  TEST_ASSERT_EQUAL_STRING(stamped,
+                           stampedInput.deviceStatusStamp.current_fw_version);
+
+  JsonDocument doc;
+  deserializeJson(doc, serialize_log(stampedInput));
+  TEST_ASSERT_EQUAL_STRING(stamped, doc["firmware_version"]);
+}
+
 void setUp(void) {
   // set stuff up here
 }
@@ -106,6 +130,7 @@ void process()
   UNITY_BEGIN();
   RUN_TEST(test_serialize_log);
   RUN_TEST(test_serialize_log_with_retry);
+  RUN_TEST(test_serialize_log_keeps_a_stamped_version_whole);
   UNITY_END();
 }
 
