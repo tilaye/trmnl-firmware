@@ -9,8 +9,24 @@
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
+// Build stamp. The version alone cannot say WHICH build of 1.8.0 is on a
+// board, and once units ship there is no other way to ask them. The commit
+// rides along as SemVer build metadata (the '+' is what the spec reserves for
+// exactly this, and is ignored in version precedence), so the string stays a
+// legal 1.8.0 to anything that parses it. Passed as a bare token and
+// stringified here, which keeps the quoting out of platformio.ini.
+//
+// Nothing but the hash goes in it: this string is on the glass in front of a
+// customer, so it may not carry build-hygiene notes for us. The guard that a
+// stamped hash actually describes committed source lives in
+// server/tools/factory-flash.sh, which refuses to flash a dirty tree — the
+// one moment where it matters.
 #ifndef FW_VERSION_SUFFIX
+#ifdef FW_GIT_HASH
+#define FW_VERSION_SUFFIX "+g" TOSTRING(FW_GIT_HASH)
+#else
 #define FW_VERSION_SUFFIX ""
+#endif
 #endif
 
 // Compile-time firmware version string
