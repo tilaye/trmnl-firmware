@@ -78,7 +78,17 @@ RTC_DATA_ATTR int iUpdateCount = 0;
 #include "Group5.h"
 #include <config.h>
 #include "wifi_connect_qr.h"
+#include "WifiCaptive.h"   // WIFI_SSID: the setup screen names the AP it starts
 #include "wifi_failed_qr.h"
+
+// A QR handed in from outside (the stored BRAND blob carries one on units that
+// have been branded); nullptr means the built-in code above still stands.
+static const uint8_t *s_brand_qr = nullptr;
+
+void display_set_brand_qr(const uint8_t *pQR)
+{
+    s_brand_qr = pQR;
+}
 #include <ctype.h> //iscntrl()
 #include <api-client/display.h>
 #include <trmnl_log.h>
@@ -1978,24 +1988,39 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type, String friendly_i
 
         String string1 = "TRMNL firmware ";
         string1 += fw_version;
+        // Name the network rather than describing it: the portal's AP is
+        // WIFI_SSID, so the screen and the radio cannot disagree about what
+        // the reader is looking for in their Wi-Fi list.
+        String string2 = "Connect your phone to the Wi-Fi network \"";
+        string2 += WIFI_SSID;
+        string2 += "\"";
+        const char string3[] = "Scan the QR code for help";
+        const uint8_t *pQR = s_brand_qr ? s_brand_qr : wifi_connect_qr;
+#ifdef __BB_EPAPER__
+        // The logo is centred by the caller and ends around y=308 on this
+        // panel, so everything else stacks below it in reading order:
+        // instruction, QR, and the version along the very bottom. The top
+        // corners stay empty so the mark has the width of the screen.
+        bbep.getStringBox(string2.c_str(), &rect);
+        bbep.setCursor((bbep.width() - rect.w) / 2, 340);
+        bbep.println(string2);
+        bbep.getStringBox(string3, &rect);
+        bbep.setCursor((bbep.width() - rect.w) / 2, 366);
+        bbep.print(string3);
+        bbep.loadG5Image(pQR, (bbep.width() - 66) / 2, 378, BBEP_WHITE, BBEP_BLACK); // 66x66 QR code
+        bbep.getStringBox(string1.c_str(), &rect);
+        bbep.setCursor((bbep.width() - rect.w) / 2, 466);
+        bbep.println(string1);
+#else // bigger for X
         bbep.setCursor(40, 48); // place in upper left corner
         bbep.println(string1);
-        const char string2[] = "Connect your phone or computer to TRMNL WiFi network";
-        bbep.getStringBox(string2, &rect);
-#ifdef __BB_EPAPER__
-        bbep.setCursor((bbep.width() - rect.w) / 2, 386);
-#else
+        bbep.getStringBox(string2.c_str(), &rect);
         bbep.setCursor((bbep.width() - rect.w) / 2, bbep.height() - 140 - rect.h*2);
-#endif
         bbep.println(string2);
-        const char string3[] = "or scan the QR code for help";
         bbep.getStringBox(string3, &rect);
         bbep.setCursor((bbep.width() - rect.w) / 2, -1);
         bbep.print(string3);
-#ifdef __BB_EPAPER__
-        bbep.loadG5Image(wifi_connect_qr, bbep.width() - 40 - 66, 40, BBEP_WHITE, BBEP_BLACK); // 66x66 QR code
-#else // bigger for X
-        bbep.loadG5Image(wifi_connect_qr, bbep.width() - (66*2) - 80, 80, BBEP_WHITE, BBEP_BLACK, 2.0f);
+        bbep.loadG5Image(pQR, bbep.width() - (66*2) - 80, 80, BBEP_WHITE, BBEP_BLACK, 2.0f);
 #endif
     }
     break;

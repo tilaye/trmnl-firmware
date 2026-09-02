@@ -98,6 +98,7 @@ static void showMessageWithLogo(MSG message_type, String friendly_id, bool id, c
 static void showMessageWithLogo(MSG message_type, const ApiSetupResponse &apiResponse);
 static void wifiErrorDeepSleep();
 static uint8_t *storedLogoOrDefault(int iType);
+static const uint8_t *storedBrandQR(void);
 static bool checkCurrentFileName(String &newName);
 static DeviceStatusStamp getDeviceStatusStamp();
 void log_nvs_usage();
@@ -402,6 +403,7 @@ void bl_init(void)
 
     Log_info("FW version %s", FW_VERSION_STRING);
 
+    display_set_brand_qr(storedBrandQR());
     showMessageWithLogo(WIFI_CONNECT, "", false, FW_VERSION_STRING, "");
     WifiCaptivePortal.setResetSettingsCallback(resetDeviceCredentials);
     res = WifiCaptivePortal.startPortal();
@@ -2300,6 +2302,36 @@ static void showMessageWithLogo(MSG message_type, const ApiSetupResponse &apiRes
 
 // 0 = larger glyph for message screens
 // 1 = loading screen (mostly blank, small glyph in lower right corner)
+// The third image in the BRAND blob, when one is stored: a QR for the setup
+// screen. Returns NULL for the common case of a blob holding only the two logo
+// frames (or no blob at all), which leaves the firmware's built-in code in
+// place. The frames are chained: 8-byte header, compressed size at offset 6.
+static const uint8_t *storedBrandQR(void)
+{
+   uint32_t u32Size;
+   BRAND *pBrand;
+   const uint8_t *s, *end;
+
+   if (esp_flash_get_size(NULL, &u32Size) != ESP_OK || u32Size == 0) return NULL;
+   pBrand = (BRAND *)malloc(sizeof(BRAND));
+   if (!pBrand) return NULL;
+   esp_flash_init(NULL);
+   esp_flash_read(NULL, (void *)pBrand, u32Size - sizeof(BRAND), sizeof(BRAND));
+   if (*(uint16_t *)&pBrand->u8Images[0] != 0xBBBF /*BB_BITMAP_MARKER*/) {
+      free(pBrand);
+      return NULL;
+   }
+   s = &pBrand->u8Images[0];
+   end = s + sizeof(pBrand->u8Images);
+   for (int i = 0; i < 2; i++) { // step over the two logo frames
+      uint16_t u16Size = *(uint16_t *)&s[6];
+      if (s + u16Size + 8 + 8 > end) { free(pBrand); return NULL; }
+      s += u16Size + 8;
+   }
+   if (*(uint16_t *)s != 0xBBBF) { free(pBrand); return NULL; }
+   return s; // leaked with pBrand, like the logo frames above it
+}
+
 static uint8_t *storedLogoOrDefault(int iType)
 {
 //

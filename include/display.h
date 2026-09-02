@@ -115,6 +115,15 @@ uint8_t * display_read_file(const char *filename, int *file_size);
  * @param message_type type of message that will show on the screen
  * @return none
  */
+/**
+ * @brief Supply a QR image for the setup screen, replacing the built-in one.
+ *        Pass nullptr (the default) to keep the firmware's own. The image is a
+ *        Group5 BB_BITMAP frame, the same format as the logo buffers.
+ * @param pQR pointer to the frame, or nullptr
+ * @return none
+ */
+void display_set_brand_qr(const uint8_t *pQR);
+
 void display_show_msg(uint8_t *image_buffer, MSG message_type);
 
 /**
