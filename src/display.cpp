@@ -1502,8 +1502,12 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type)
     {
     case WIFI_CONNECT:
     {
-        const char string1[] = "Connect to TRMNL WiFi";
-        bbep.getStringBox(string1, &rect);
+        // Name the network from WIFI_SSID rather than spelling it out again;
+        // a second copy of the name is a second thing to forget to rename.
+        String string1 = "Connect to the \"";
+        string1 += WIFI_SSID;
+        string1 += "\" WiFi";
+        bbep.getStringBox(string1.c_str(), &rect);
         bbep.setCursor((bbep.width() - rect.w)/2, 430);
         bbep.println(string1);
         const char string2[] = "on your phone or computer";
@@ -1514,7 +1518,7 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type)
     break;
     case WIFI_FAILED:
     {
-        String string0 = "TRMNL firmware ";
+        String string0 = "firmware ";
         string0 += FW_VERSION_STRING;
 #ifdef __BB_EPAPER__
         bbep.setCursor(40, 48); // place in upper left corner
@@ -1637,7 +1641,7 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type)
     break;
     case API_SIZE_ERROR:
     {
-        const char string1[] = "WiFi connected, TRMNL content malformed.";
+        const char string1[] = "WiFi connected, content incomplete.";
         bbep.getStringBox(string1, &rect);
 #ifdef __BB_EPAPER__
         bbep.setCursor((bbep.width() - rect.w) / 2, 400);
@@ -1986,7 +1990,7 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type, String friendly_i
     {
         Log_info("wifi connect case");
 
-        String string1 = "TRMNL firmware ";
+        String string1 = "firmware ";
         string1 += fw_version;
         // Name the network rather than describing it: the portal's AP is
         // WIFI_SSID, so the screen and the radio cannot disagree about what
