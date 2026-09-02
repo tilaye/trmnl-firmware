@@ -417,7 +417,9 @@ std::vector<Network> WifiCaptive::getScannedUniqueNetworks(bool runScan)
     // Process each found network
     for (int i = 0; i < n; ++i)
     {
-        if (!WiFi.SSID(i).equals("TRMNL"))
+        // The portal must not offer its own AP as a network to join; that
+        // is WIFI_SSID, not a name spelled out a second time here.
+        if (!WiFi.SSID(i).equals(WIFI_SSID))
         {
             String ssid = WiFi.SSID(i);
             int32_t rssi = WiFi.RSSI(i);
