@@ -2306,30 +2306,55 @@ static void showMessageWithLogo(MSG message_type, const ApiSetupResponse &apiRes
 // screen. Returns NULL for the common case of a blob holding only the two logo
 // frames (or no blob at all), which leaves the firmware's built-in code in
 // place. The frames are chained: 8-byte header, compressed size at offset 6.
-static const uint8_t *storedBrandQR(void)
+// Where the brand art comes from. A build with ERTALE_BRAND carries the blob
+// inside the app image (include/ertale_brand.h, written by the server repo's
+// tools/brand-blob.php), so the art travels with every OTA update and the
+// factory script's flash write is not needed for it. Without the flag the last
+// 4KB of flash are read, which is where that script puts the same bytes.
+// Either way the result is read-only and lives as long as the process: the
+// frames returned below point into it.
+#ifdef ERTALE_BRAND
+#include "ertale_brand.h"
+static const BRAND *brandBlob(void)
+{
+   return (const BRAND *)ertale_brand_bin;
+}
+#else
+static const BRAND *brandBlob(void)
 {
    uint32_t u32Size;
    BRAND *pBrand;
-   const uint8_t *s, *end;
 
+   // ESP.getFlashChipSize() returns the size stamped in the bootloader image
+   // header (4MB in TRMNL's merged bins, and can even read 0 on the S3, where
+   // the bootloader sits at 0x0 rather than 0x1000). Ask the flash chip itself
+   // so the BRAND blob is read from the true end of flash.
    if (esp_flash_get_size(NULL, &u32Size) != ESP_OK || u32Size == 0) return NULL;
-   pBrand = (BRAND *)malloc(sizeof(BRAND));
+   Log_info("%s [%d]: esp flash size: %d\r\n", __FILE__, __LINE__, u32Size);
+   pBrand = (BRAND *)malloc(sizeof(BRAND)); // leaked on purpose, see above
    if (!pBrand) return NULL;
    esp_flash_init(NULL);
    esp_flash_read(NULL, (void *)pBrand, u32Size - sizeof(BRAND), sizeof(BRAND));
-   if (*(uint16_t *)&pBrand->u8Images[0] != 0xBBBF /*BB_BITMAP_MARKER*/) {
-      free(pBrand);
-      return NULL;
-   }
+   return pBrand;
+}
+#endif
+
+static const uint8_t *storedBrandQR(void)
+{
+   const BRAND *pBrand = brandBlob();
+   const uint8_t *s, *end;
+
+   if (!pBrand) return NULL;
+   if (*(uint16_t *)&pBrand->u8Images[0] != 0xBBBF /*BB_BITMAP_MARKER*/) return NULL;
    s = &pBrand->u8Images[0];
    end = s + sizeof(pBrand->u8Images);
    for (int i = 0; i < 2; i++) { // step over the two logo frames
       uint16_t u16Size = *(uint16_t *)&s[6];
-      if (s + u16Size + 8 + 8 > end) { free(pBrand); return NULL; }
+      if (s + u16Size + 8 + 8 > end) return NULL;
       s += u16Size + 8;
    }
-   if (*(uint16_t *)s != 0xBBBF) { free(pBrand); return NULL; }
-   return s; // leaked with pBrand, like the logo frames above it
+   if (*(uint16_t *)s != 0xBBBF) return NULL;
+   return s;
 }
 
 static uint8_t *storedLogoOrDefault(int iType)
@@ -2339,35 +2364,23 @@ static uint8_t *storedLogoOrDefault(int iType)
 // The top 4K of FLASH would be reserved for this data.
 // The images are stored as: logo_medium, loading
 //
-   uint32_t u32Size;
-   //esp_flash_t chip;
-   uint8_t *s;
+   const uint8_t *s;
    uint16_t u16Size;
-   BRAND *pBrand;
+   const BRAND *pBrand = brandBlob();
 
-   // ESP.getFlashChipSize() returns the size stamped in the bootloader image
-   // header (4MB in TRMNL's merged bins, and can even read 0 on the S3, where
-   // the bootloader sits at 0x0 rather than 0x1000). Ask the flash chip itself
-   // so the BRAND blob is read from the true end of flash.
-   if (esp_flash_get_size(NULL, &u32Size) != ESP_OK) u32Size = 0;
-   Log_info("%s [%d]: esp flash size: %d\r\n", __FILE__, __LINE__, u32Size);
-   if (u32Size != 0) {
-   pBrand = (BRAND *)malloc(sizeof(BRAND)); // DEBUG - we can leak this memory for now
-   esp_flash_init(NULL);
-   esp_flash_read(NULL, (void *)pBrand, u32Size-sizeof(BRAND), sizeof(BRAND));
-   if (*(uint16_t *)&pBrand->u8Images[0] == 0xBBBF /*BB_BITMAP_MARKER*/) {
-      // Group5 compressed images are present, use them
+   if (pBrand && *(uint16_t *)&pBrand->u8Images[0] == 0xBBBF /*BB_BITMAP_MARKER*/) {
+      // Group5 compressed images are present, use them. The display code takes
+      // a non-const pointer but only reads through it.
       if (iType == 0) {
-        return &pBrand->u8Images[0]; // the first image is the medium sized logo
+        return const_cast<uint8_t *>(&pBrand->u8Images[0]); // the first image is the medium sized logo
       } else { // the second image is the loading screen with small logo
         // get the pointer to the loading image
         s = &pBrand->u8Images[0];
         u16Size = *(uint16_t *)&s[6]; // compressed image size
         s += u16Size + 8; // skip to loading image
-        return s;
+        return const_cast<uint8_t *>(s);
       }
    }
-  }
 #ifdef BOARD_TRMNL_X
     return const_cast<uint8_t *>(logo_medium);
 #else
