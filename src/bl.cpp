@@ -65,6 +65,7 @@ bool status = false;          // need to download a new image
 bool update_firmware = false; // need to download a new firmware
 bool reset_firmware = false;  // need to reset credentials
 bool ship_white = false;      // the server asked for a blank white panel
+bool unknown_to_server = false; // /api/display answered 500: it does not know our key
 bool send_log = false;        // need to send logs
 bool double_click = false;
 bool log_retry = false;                                              // need to log connection retry
@@ -87,6 +88,7 @@ static void getDeviceCredentials();                  // receiveing API key and F
 static bool performApiSetup();     // perform API setup call and return success
 static void downloadSetupImage();                    // download and display setup image
 static void resetDeviceCredentials(void);            // reset device credentials API key, Friendly ID, Wi-Fi SSID and password
+static void forgetServerIdentity(void);              // drop only the API key and friendly ID, then restart
 static void checkAndPerformFirmwareUpdate(void);     // OTA update
 static void goToSleep(void);                         // sleep preparing
 static bool setClock(void);                          // clock synchronization
@@ -544,8 +546,15 @@ void bl_init(void)
   // reset checking
   if (request_result == HTTPS_RESET)
   {
-    Log.info("%s [%d]: Device reseting...\r\n", __FILE__, __LINE__);
-    resetDeviceCredentials();
+    if (unknown_to_server)
+    {
+      forgetServerIdentity();
+    }
+    else
+    {
+      Log.info("%s [%d]: Device reseting...\r\n", __FILE__, __LINE__);
+      resetDeviceCredentials();
+    }
   }
 
   // OTA update checking
@@ -1283,6 +1292,10 @@ https_request_err_e handleApiDisplayResponse(ApiDisplayResponse &apiResponse)
     case 500:
     {
       result = HTTPS_RESET;
+      // 500 means the server does not recognise our API key - what ours answers
+      // when a device row has been deleted. That is not a reason to forget the
+      // Wi-Fi or the server URL, so this reset is the narrow one below.
+      unknown_to_server = true;
       Log.info("%s [%d]: write new refresh rate: %d\r\n", __FILE__, __LINE__, SLEEP_TIME_WHILE_NOT_CONNECTED);
       preferences.putUInt(PREFERENCES_SLEEP_TIME_KEY, SLEEP_TIME_WHILE_NOT_CONNECTED);
       Log.info("%s [%d]: written new refresh rate: %d\r\n", __FILE__, __LINE__, result);
@@ -1701,6 +1714,10 @@ https_request_err_e handleApiDisplayResponse(ApiDisplayResponse &apiResponse)
     case 500:
     {
       result = HTTPS_RESET;
+      // 500 means the server does not recognise our API key - what ours answers
+      // when a device row has been deleted. That is not a reason to forget the
+      // Wi-Fi or the server URL, so this reset is the narrow one below.
+      unknown_to_server = true;
       Log.info("%s [%d]: write new refresh rate: %d\r\n", __FILE__, __LINE__, SLEEP_TIME_WHILE_NOT_CONNECTED);
       preferences.putUInt(PREFERENCES_SLEEP_TIME_KEY, SLEEP_TIME_WHILE_NOT_CONNECTED);
       Log.info("%s [%d]: written new refresh rate: %d\r\n", __FILE__, __LINE__, result);
@@ -1964,6 +1981,45 @@ static void resetDeviceCredentials(void)
     Log.info("%s [%d]: The device reset success. Restarting...\r\n", __FILE__, __LINE__);
   else
     Log.error("%s [%d]: The device reseting error. The device will be reset now...\r\n", __FILE__, __LINE__);
+  preferences.end();
+  ESP.restart();
+}
+
+/**
+ * @brief Forget only what identifies this device to the server, then restart
+ * @param none
+ * @return none
+ *
+ * A status 500 from /api/display means "I do not know this API key", which is
+ * what our server answers once a device row has been deleted. The stock
+ * reaction is resetDeviceCredentials() above, and that is far too much for it:
+ * it erases the saved Wi-Fi networks and clears the whole `data` namespace,
+ * taking the preseeded api_url with it, so the unit wakes on the captive
+ * portal pointing at the vendor's default server and its owner has to redo the
+ * Wi-Fi and type our URL in by hand. Nothing about an unknown key needs any of
+ * that. So drop only what /api/setup hands back - the API key and the friendly
+ * ID - plus the drawing state that belonged to the old row, and restart. The
+ * next boot is on the same Wi-Fi, still pointed at the same server, and
+ * re-registers by MAC: the same derived ID comes back with a fresh claim code.
+ *
+ * The full reset stays where it is deliberate: a reset_firmware from the
+ * server, and the long-press / soft-reset in the button handler.
+ */
+static void forgetServerIdentity(void)
+{
+  // With no key stored there is nothing to drop, so this 500 is not a deleted
+  // row and restarting would only spin: return and let the caller sleep.
+  if (!preferences.isKey(PREFERENCES_API_KEY))
+  {
+    Log_info("Server does not know this device and no API key is stored; sleeping instead");
+    return;
+  }
+  Log_info("Server does not know this device; re-registering (WiFi and server URL kept)");
+  preferences.remove(PREFERENCES_API_KEY);
+  preferences.remove(PREFERENCES_FRIENDLY_ID);
+  preferences.remove(PREFERENCES_FILENAME_KEY);          // the deleted row's image
+  preferences.remove(PREFERENCES_DEVICE_REGISTERED_KEY); // draw the setup screen again
+  need_to_refresh_display = 1;
   preferences.end();
   ESP.restart();
 }
