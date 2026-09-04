@@ -64,6 +64,7 @@ static float vBatt;
 bool status = false;          // need to download a new image
 bool update_firmware = false; // need to download a new firmware
 bool reset_firmware = false;  // need to reset credentials
+bool ship_white = false;      // the server asked for a blank white panel
 bool send_log = false;        // need to send logs
 bool double_click = false;
 bool log_retry = false;                                              // need to log connection retry
@@ -326,6 +327,25 @@ void bl_init(void)
   // EPD clear
   Log.info("%s [%d]: Display init\r\n", __FILE__, __LINE__);
   display_init();
+
+  // Factory trigger. server/tools/factory-flash.sh preseeds `ship`=1 into NVS,
+  // so a freshly flashed unit's first bench power-on blanks its glass and does
+  // nothing else - no splash, no WiFi, no server. It goes into the box white,
+  // and the customer's own first power-on is the splash and the setup screen.
+  // The key is removed before the panel is touched, so this happens exactly
+  // once. The stored filename goes with it: leaving it would let the next real
+  // poll see the server's filename unchanged and redraw nothing over the white.
+  if (preferences.isKey(PREFERENCES_SHIP_KEY))
+  {
+    Log_info("ship key set: blanking the panel for the box");
+    preferences.remove(PREFERENCES_SHIP_KEY);
+    preferences.putString(PREFERENCES_FILENAME_KEY, "");
+    // Sleep long enough that the operator's switch, not a timer, is what ends
+    // this boot; a wake here would draw the setup screen onto the white panel.
+    preferences.putUInt(PREFERENCES_SLEEP_TIME_KEY, SLEEP_TIME_AFTER_SHIP_WHITE);
+    display_show_white();
+    goToSleep();
+  }
 
   // Mount SPIFFS
   filesystem_init();
@@ -739,6 +759,18 @@ static https_request_err_e downloadAndShow()
 
   https_request_err_e result = handleApiDisplayResponse(apiDisplayResult.response);
 
+  if (ship_white)
+  {
+    // Where the image would have been drawn. Nothing is downloaded; the stored
+    // filename is cleared so the next poll's image counts as new and redraws
+    // over the white instead of being skipped as unchanged. The caller then
+    // sleeps as usual, for the refresh rate this same reply carried.
+    Log_info("Server asked for a white panel; skipping the image");
+    display_show_white();
+    preferences.putString(PREFERENCES_FILENAME_KEY, "");
+    return result;
+  }
+
   if (!status && result == HTTPS_SUCCESS) { // this means we already have this image stored in SPIFFS
       char szTemp[36];
       fixFileName(apiDisplayResult.response.filename.c_str(), szTemp);
@@ -1120,6 +1152,11 @@ https_request_err_e handleApiDisplayResponse(ApiDisplayResponse &apiResponse)
       uint64_t rate = apiResponse.refresh_rate;
       reset_firmware = apiResponse.reset_firmware;
       iTempProfile = apiResponse.temp_profile;
+      // Server trigger: one reply carrying "ship": true blanks the panel of a
+      // unit already in the field, the same white the factory NVS key gives a
+      // new one. It replaces this poll's drawing rather than adding to it, so
+      // the image is not even looked at; the refresh rate below still applies.
+      ship_white = apiResponse.ship;
 
       bool sleep_5_seconds = false;
 
@@ -1134,7 +1171,7 @@ https_request_err_e handleApiDisplayResponse(ApiDisplayResponse &apiResponse)
           update_firmware = false;
         }
       }
-      if (image_url.length() > 0)
+      if (!ship_white && image_url.length() > 0)
       {
         Log.info("%s [%d]: image_url: %s\r\n", __FILE__, __LINE__, image_url.c_str());
         Log.info("%s [%d]: image url end with: %d\r\n", __FILE__, __LINE__, image_url.endsWith("/setup-logo.bmp"));

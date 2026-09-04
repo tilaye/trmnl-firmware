@@ -179,6 +179,34 @@ void display_reset(void)
 }
 
 /**
+ * @brief Function to blank the panel to white and sleep the display
+ * @param none
+ * @return none
+ *
+ * Two things want a genuinely blank panel: the factory `ship` NVS key, so a
+ * boxed unit's glass is white until its owner powers it on, and the server's
+ * `ship` flag, which gives a unit already in the field the same white. The
+ * refresh is FULL, not partial: a partial one leaves a ghost of whatever was
+ * drawn before, which is exactly what "blank in the box" must not show.
+ */
+void display_show_white(void)
+{
+    Log_info("display_show_white start");
+#ifdef BB_EPAPER
+    bbep.allocBuffer(false);
+    bbep.fillScreen(BBEP_WHITE);
+    bbep.writePlane(PLANE_0);
+    bbep.refresh(REFRESH_FULL, true);
+    bbep.freeBuffer();
+#else
+    bbep.fillScreen(BBEP_WHITE);
+    bbep.fullUpdate();
+#endif
+    display_sleep();
+    Log_info("display_show_white end");
+}
+
+/**
  * @brief Function to read the display height
  * @return uint16_t - height of display in pixels
  */

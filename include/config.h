@@ -50,6 +50,9 @@
 #define PREFERENCES_LAST_SLEEP_TIME "last_sleep"
 #define PREFERENCES_CONNECT_API_RETRY_COUNT "retry_count"
 #define PREFERENCES_CONNECT_WIFI_RETRY_COUNT "wifi_retry"
+// One-shot factory instruction, preseeded by server/tools/factory-flash.sh:
+// blank the panel on the first bench power-on, then sleep until switched off.
+#define PREFERENCES_SHIP_KEY "ship"
 
 #define WIFI_CONNECTION_RSSI (-100)
 
@@ -64,6 +67,7 @@
 #define SLEEP_TIME_TO_SLEEP 900                /* Time ESP32 will go to sleep (in seconds) */
 #define SLEEP_TIME_WHILE_NOT_CONNECTED 5       /* Time ESP32 will go to sleep (in seconds) */
 #define SLEEP_TIME_WHILE_PLUGIN_NOT_ATTACHED 5 /* Time ESP32 will go to sleep (in seconds) */
+#define SLEEP_TIME_AFTER_SHIP_WHITE 86400      /* Blanked at the factory: sleep until switched off */
 
 // Different display profiles
 #define TEMP_PROFILE_DEFAULT 0

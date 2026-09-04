@@ -156,6 +156,13 @@ void display_show_msg_qa(uint8_t *image_buffer, const float *voltage, const floa
 void display_set_light_sleep(uint8_t enabled);
 
 /**
+ * @brief Blank the whole panel to white and put the display to sleep
+ * @param none
+ * @return none
+ */
+void display_show_white(void);
+
+/**
  * @brief Function to got the display to the sleep
  * @param none
  * @return none

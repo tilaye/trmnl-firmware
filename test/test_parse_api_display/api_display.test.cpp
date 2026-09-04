@@ -12,6 +12,7 @@ void assert_response_equal(ApiDisplayResponse expected, ApiDisplayResponse actua
   TEST_ASSERT_EQUAL(expected.reset_firmware, actual.reset_firmware);
   TEST_ASSERT_EQUAL(expected.special_function, actual.special_function);
   TEST_ASSERT_EQUAL_STRING(expected.action.c_str(), actual.action.c_str());
+  TEST_ASSERT_EQUAL(expected.ship, actual.ship);
 }
 
 void test_parseResponse_apiDisplay_success(void)
@@ -59,6 +60,14 @@ void test_parseResponse_apiDisplay_missing_fields(void)
   assert_response_equal(expected, parseResponse_apiDisplay(input));
 }
 
+void test_parseResponse_apiDisplay_ship(void)
+{
+  String input = "{\"status\":0,\"refresh_rate\":900,\"ship\":true}";
+
+  auto parsed = parseResponse_apiDisplay(input);
+  TEST_ASSERT_TRUE(parsed.ship);
+}
+
 void test_parseResponse_apiDisplay_treats_unknown_sf_as_none(void)
 {
   String input = "{\"status\":200,\"image_url\":\"http://example.com/foo.bmp\",\"update_firmware\":true,\"firmware_url\":\"https://example.com/firmware.bin\",\"refresh_rate\":123456,\"reset_firmware\":true,\"special_function\":\"unknown-string\",\"action\":\"special_action\"}";
@@ -82,6 +91,7 @@ void process()
   RUN_TEST(test_parseResponse_apiDisplay_deserializationError);
   RUN_TEST(test_parseResponse_apiDisplay_treats_unknown_sf_as_none);
   RUN_TEST(test_parseResponse_apiDisplay_missing_fields);
+  RUN_TEST(test_parseResponse_apiDisplay_ship);
   UNITY_END();
 }
 

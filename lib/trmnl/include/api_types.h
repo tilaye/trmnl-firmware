@@ -43,6 +43,7 @@ struct ApiDisplayResponse
   bool reset_firmware;
   SPECIAL_FUNCTION special_function;
   String action;
+  bool ship; // one reply asking for a blank white panel; see display_show_white()
 };
 
 struct ApiDisplayInputs
