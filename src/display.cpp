@@ -89,6 +89,16 @@ void display_set_brand_qr(const uint8_t *pQR)
 {
     s_brand_qr = pQR;
 }
+
+// The setup screen's foot: the lockup with the address under it, smaller
+// (the blob's fourth frame). nullptr means that screen keeps the frame it is
+// handed, centred, the way every other message screen draws it.
+static const uint8_t *s_brand_foot = nullptr;
+
+void display_set_brand_foot(const uint8_t *pFoot)
+{
+    s_brand_foot = pFoot;
+}
 #include <ctype.h> //iscntrl()
 #include <api-client/display.h>
 #include <trmnl_log.h>
@@ -1964,7 +1974,15 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type, String friendly_i
     Log_info("display_show_msg2 start");
 
     // Load the image into the bb_epaper framebuffer
-    if (image_buffer && *(uint16_t *)image_buffer == BB_BITMAP_MARKER)
+    if (message_type == WIFI_CONNECT && s_brand_foot)
+    {
+        // The setup screen (owner, 2026-09-18): the lockup and the address go
+        // along the foot, smaller, so the steps and the QR can have the middle.
+        const BB_BITMAP *pFoot = (const BB_BITMAP *)s_brand_foot;
+        bbep.fillScreen(BBEP_WHITE);
+        bbep.loadG5Image(s_brand_foot, (width - pFoot->width) / 2, height - pFoot->height - 12, BBEP_WHITE, BBEP_BLACK);
+    }
+    else if (image_buffer && *(uint16_t *)image_buffer == BB_BITMAP_MARKER)
     {
         // G5 compressed image
         BB_BITMAP *pBBB = (BB_BITMAP *)image_buffer;
@@ -2023,26 +2041,55 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type, String friendly_i
         // Name the network rather than describing it: the portal's AP is
         // WIFI_SSID, so the screen and the radio cannot disagree about what
         // the reader is looking for in their Wi-Fi list.
-        String string2 = "Connect your phone to the Wi-Fi network \"";
+        // Numbered (owner, 2026-09-18: "connect your phone to the network and
+        // scan seems like two options. they are actually steps").
+        String string2 = "1. Connect your phone to the Wi-Fi network \"";
         string2 += WIFI_SSID;
         string2 += "\"";
-        const char string3[] = "Scan the QR code for help";
+        const char string3[] = "2. Scan the QR code for help";
         const uint8_t *pQR = s_brand_qr ? s_brand_qr : wifi_connect_qr;
 #ifdef __BB_EPAPER__
-        // The logo is centred by the caller and ends around y=308 on this
-        // panel, so everything else stacks below it in reading order:
-        // instruction, QR, and the version along the very bottom. The top
-        // corners stay empty so the mark has the width of the screen.
-        bbep.getStringBox(string2.c_str(), &rect);
-        bbep.setCursor((bbep.width() - rect.w) / 2, 340);
-        bbep.println(string2);
-        bbep.getStringBox(string3, &rect);
-        bbep.setCursor((bbep.width() - rect.w) / 2, 366);
-        bbep.print(string3);
-        bbep.loadG5Image(pQR, (bbep.width() - 66) / 2, 378, BBEP_WHITE, BBEP_BLACK); // 66x66 QR code
-        bbep.getStringBox(string1.c_str(), &rect);
-        bbep.setCursor((bbep.width() - rect.w) / 2, 466);
-        bbep.println(string1);
+        if (s_brand_foot)
+        {
+            // The two steps and the QR are one block in the middle of the
+            // panel (owner, 2026-09-18: "the two steps and qr code should be
+            // right in the middle"); the caller has drawn the lockup along
+            // the foot, and the version keeps to the top-left corner. The
+            // cursor y is a baseline, so the block's top is one line's ink
+            // height above the first baseline; the 26px line step and the
+            // 12px gap to the QR are the spacings the old layout was
+            // checked with on the glass.
+            const int lineStep = 26, qrGap = 12, qrSize = 66;
+            bbep.getStringBox(string2.c_str(), &rect);
+            const int blockH = rect.h + lineStep + qrGap + qrSize;
+            const int baseline = (bbep.height() - blockH) / 2 + rect.h;
+            bbep.setCursor((bbep.width() - rect.w) / 2, baseline);
+            bbep.println(string2);
+            bbep.getStringBox(string3, &rect);
+            bbep.setCursor((bbep.width() - rect.w) / 2, baseline + lineStep);
+            bbep.print(string3);
+            bbep.loadG5Image(pQR, (bbep.width() - qrSize) / 2, baseline + lineStep + qrGap, BBEP_WHITE, BBEP_BLACK); // 66x66 QR code
+            bbep.getStringBox(string1.c_str(), &rect);
+            bbep.setCursor(12, 12 + rect.h);
+            bbep.println(string1);
+        }
+        else
+        {
+            // No foot frame in the blob: the logo is centred by the caller and
+            // ends around y=320 on this panel, so everything else stacks below
+            // it in reading order: instruction, QR, and the version along the
+            // very bottom.
+            bbep.getStringBox(string2.c_str(), &rect);
+            bbep.setCursor((bbep.width() - rect.w) / 2, 340);
+            bbep.println(string2);
+            bbep.getStringBox(string3, &rect);
+            bbep.setCursor((bbep.width() - rect.w) / 2, 366);
+            bbep.print(string3);
+            bbep.loadG5Image(pQR, (bbep.width() - 66) / 2, 378, BBEP_WHITE, BBEP_BLACK); // 66x66 QR code
+            bbep.getStringBox(string1.c_str(), &rect);
+            bbep.setCursor((bbep.width() - rect.w) / 2, 466);
+            bbep.println(string1);
+        }
 #else // bigger for X
         bbep.setCursor(40, 48); // place in upper left corner
         bbep.println(string1);

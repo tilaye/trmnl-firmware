@@ -102,6 +102,7 @@ static void showMessageWithLogo(MSG message_type, const ApiSetupResponse &apiRes
 static void wifiErrorDeepSleep();
 static uint8_t *storedLogoOrDefault(int iType);
 static const uint8_t *storedBrandQR(void);
+static const uint8_t *storedBrandFoot(void);
 static bool checkCurrentFileName(String &newName);
 static DeviceStatusStamp getDeviceStatusStamp();
 void log_nvs_usage();
@@ -426,6 +427,7 @@ void bl_init(void)
     Log_info("FW version %s", FW_VERSION_STRING);
 
     display_set_brand_qr(storedBrandQR());
+    display_set_brand_foot(storedBrandFoot());
     showMessageWithLogo(WIFI_CONNECT, "", false, FW_VERSION_STRING, "");
     WifiCaptivePortal.setResetSettingsCallback(resetDeviceCredentials);
     res = WifiCaptivePortal.startPortal();
@@ -2432,22 +2434,39 @@ static const BRAND *brandBlob(void)
 }
 #endif
 
-static const uint8_t *storedBrandQR(void)
+// The n-th Group5 frame of the BRAND blob, or NULL when the blob has no such
+// frame: the images sit back to back, each behind an 8-byte BB_BITMAP header
+// with the compressed size at byte 6, and the padding after the last one is
+// zero, so a walk past the end finds no marker.
+static const uint8_t *brandFrame(int iFrame)
 {
    const BRAND *pBrand = brandBlob();
    const uint8_t *s, *end;
 
    if (!pBrand) return NULL;
-   if (*(uint16_t *)&pBrand->u8Images[0] != 0xBBBF /*BB_BITMAP_MARKER*/) return NULL;
    s = &pBrand->u8Images[0];
    end = s + sizeof(pBrand->u8Images);
-   for (int i = 0; i < 2; i++) { // step over the two logo frames
+   for (int i = 0; i < iFrame; i++) {
+      if (*(uint16_t *)s != 0xBBBF /*BB_BITMAP_MARKER*/) return NULL;
       uint16_t u16Size = *(uint16_t *)&s[6];
       if (s + u16Size + 8 + 8 > end) return NULL;
       s += u16Size + 8;
    }
    if (*(uint16_t *)s != 0xBBBF) return NULL;
    return s;
+}
+
+static const uint8_t *storedBrandQR(void)
+{
+   return brandFrame(2); // after the two logo frames
+}
+
+// The setup screen's foot (2026-09-18): the lockup with the address under it,
+// smaller, after the QR. A blob from before it has three frames and hands
+// back NULL, and the screen keeps its centred lockup.
+static const uint8_t *storedBrandFoot(void)
+{
+   return brandFrame(3);
 }
 
 static uint8_t *storedLogoOrDefault(int iType)

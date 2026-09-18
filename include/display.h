@@ -123,6 +123,7 @@ uint8_t * display_read_file(const char *filename, int *file_size);
  * @return none
  */
 void display_set_brand_qr(const uint8_t *pQR);
+void display_set_brand_foot(const uint8_t *pFoot);
 
 void display_show_msg(uint8_t *image_buffer, MSG message_type);
 
