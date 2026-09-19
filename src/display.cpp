@@ -116,6 +116,124 @@ void display_set_brand_wifi(const uint8_t *pWifi)
 #include "nicoclean_8.h"
 #include "Inter_18.h"
 #include "Roboto_Black_24.h"
+
+// Every screen the firmware draws itself, on the setup screens' layout (owner,
+// 2026-09-19: "all the other firmware drawn ones should follow the same
+// format"): white, the sentence's top at 40% of the panel height (the claim
+// screen's SETUP_TOP), the lockup with the address along the foot, the build
+// stamp bold bottom-right. The ones a customer is likely to meet — no Wi-Fi,
+// no server, an update — are Amharic, which the panel fonts cannot set, so
+// they are pictures from include/ertale_msgs.h (brand-blob.php; the sentences
+// live in server/tools/brand-msgs.php, and render-firmware.php mocks every
+// screen here). The rare ones are English lines in Inter_18. QA and the test
+// pattern keep the stock drawing. Returns false when the message is not one
+// of ours or the blob has no foot, and the stock case draws instead.
+#ifdef ERTALE_BRAND
+#include "ertale_msgs.h"
+#endif
+static bool brand_screen(MSG message_type, const String &friendly_id, const String &message)
+{
+#if defined(BB_EPAPER) && defined(ERTALE_BRAND)
+    const uint8_t *frame = nullptr;
+    String line1, line2;
+    switch (message_type)
+    {
+    case WIFI_CONNECT:
+        frame = s_brand_wifi;
+        if (!frame)   // a blob without the Amharic frame: the sentence in English
+        {
+            line1 = String("Connect your phone to the Wi-Fi network \"") + WIFI_SSID + "\",";
+            line2 = "then open " WIFI_PORTAL_URL " in your browser";
+        }
+        break;
+    case WIFI_FAILED:
+        frame = ertale_msg_wifi_failed;
+        line1 = message;   // the saved network that did not answer
+        break;
+    case WIFI_INTERNAL_ERROR:
+    case API_SETUP_FAILED:
+    case API_UNABLE_TO_CONNECT:
+    case API_REQUEST_FAILED:
+    case API_ERROR:
+    case API_IMAGE_DOWNLOAD_ERROR:
+    case API_SIZE_ERROR:
+        frame = ertale_msg_server;
+        break;
+    case FW_UPDATE:
+        frame = ertale_msg_ota;
+        break;
+    case FW_UPDATE_SUCCESS:
+        frame = ertale_msg_ota_done;
+        break;
+    case FW_UPDATE_FAILED:
+    case API_FIRMWARE_UPDATE_ERROR:
+        frame = ertale_msg_ota_failed;
+        break;
+    case WIFI_WEAK:
+        frame = ertale_msg_weak;
+        break;
+    case MAC_NOT_REGISTERED:
+        line1 = message;   // the server's own words
+        break;
+    case MSG_TOO_BIG:
+        line1 = "The image is too large.";
+        break;
+    case MSG_FORMAT_ERROR:
+        line1 = "The image format is incorrect.";
+        break;
+    default:
+        // QA_START, TEST, FILL_WHITE: the stock drawing. FRIENDLY_ID too, which
+        // nothing calls any more (bl.cpp keeps the glass on a 202).
+        return false;
+    }
+    if (!s_brand_foot) return false;
+
+    const int width = bbep.width(), height = bbep.height();
+    BB_RECT rect;
+    bbep.fillScreen(BBEP_WHITE);
+    const BB_BITMAP *pFoot = (const BB_BITMAP *)s_brand_foot;
+    bbep.loadG5Image(s_brand_foot, (width - pFoot->width) / 2, height - pFoot->height - 12, BBEP_WHITE, BBEP_BLACK);
+
+    const int top = height * 2 / 5;
+    // A line's baseline: text_frame()'s 22px ascent at 17pt when it is the
+    // first thing, else 34px under the frame's last baseline (8px of descent
+    // inside the frame's cropped height), as brand-blob.php spaces its lines.
+    int baseline = top + 22;
+    if (frame)
+    {
+        const BB_BITMAP *pFrame = (const BB_BITMAP *)frame;
+        bbep.loadG5Image(frame, (width - pFrame->width) / 2, top, BBEP_WHITE, BBEP_BLACK);
+        baseline = top + pFrame->height + 26;
+    }
+    bbep.setFont(Inter_18);
+    bbep.setTextColor(BBEP_BLACK, BBEP_WHITE);
+    const String *lines[2] = {&line1, &line2};
+    for (int i = 0; i < 2; i++)
+    {
+        if (lines[i]->length() == 0) continue;
+        bbep.getStringBox(lines[i]->c_str(), &rect);
+        bbep.setCursor((width - rect.w) / 2, baseline);
+        bbep.print(*lines[i]);
+        baseline += 34;
+    }
+    // The build stamp, bottom-right at the claim screen's pixels, bold (owner,
+    // 2026-09-19): the small face has no bold, so it is set twice a pixel apart.
+    bbep.setFont(nicoclean_8);
+    bbep.getStringBox(FW_VERSION_STRING, &rect);
+    bbep.setCursor(width - rect.w - 12, height - 12);
+    bbep.print(FW_VERSION_STRING);
+    bbep.setCursor(width - rect.w - 11, height - 12);
+    bbep.print(FW_VERSION_STRING);
+
+    bbep.writePlane(PLANE_0);
+    bbep.refresh(REFRESH_FULL, true);
+    bbep.freeBuffer();
+    return true;
+#else
+    (void)message_type; (void)friendly_id; (void)message;
+    return false;
+#endif
+}
 extern char filename[];
 extern Preferences preferences;
 extern ApiDisplayResult apiDisplayResult;
@@ -1520,6 +1638,7 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type)
 #ifdef BB_EPAPER
     bbep.allocBuffer(false);
 #endif
+    if (brand_screen(message_type, "", "")) return;
     if (image_buffer && *(uint16_t *)image_buffer == BB_BITMAP_MARKER)
     {
         // G5 compressed image
@@ -1982,6 +2101,7 @@ void display_show_msg(uint8_t *image_buffer, MSG message_type, String friendly_i
     BB_RECT rect;
 
     Log_info("display_show_msg2 start");
+    if (brand_screen(message_type, friendly_id, message)) return;
 
     // Load the image into the bb_epaper framebuffer
     if (message_type == WIFI_CONNECT && s_brand_foot)

@@ -338,6 +338,12 @@ void WifiCaptive::saveLastUsedWifiIndex(int index)
     preferences.putInt(WIFI_LAST_INDEX, index);
 }
 
+String WifiCaptive::lastSsid()
+{
+    readWifiCredentials();
+    return _savedWifis[readLastUsedWifiIndex()].ssid;
+}
+
 int WifiCaptive::readLastUsedWifiIndex()
 {
     Preferences preferences;

@@ -89,6 +89,10 @@ public:
     /// @return True if successfully connected to saved SSID, false otherwise.
     bool autoConnect();
 
+    /// @brief The saved network tried first, for the screen that says it did not answer
+    /// @return Its SSID, "" when none is saved
+    String lastSsid();
+
     /// @brief Checks if there are saved WiFi credentials
     /// @return True if there are saved credentials, false otherwise.
 };

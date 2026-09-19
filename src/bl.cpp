@@ -87,7 +87,6 @@ static uint32_t downloadStream(WiFiClient *stream, int content_size, uint8_t *bu
 static https_request_err_e handleApiDisplayResponse(ApiDisplayResponse &apiResponse);
 static void getDeviceCredentials();                  // receiveing API key and Friendly ID
 static bool performApiSetup();     // perform API setup call and return success
-static void downloadSetupImage();                    // download and display setup image
 static void resetDeviceCredentials(void);            // reset device credentials API key, Friendly ID, Wi-Fi SSID and password
 static void forgetServerIdentity(void);              // drop only the API key and friendly ID, then restart
 static void checkAndPerformFirmwareUpdate(void);     // OTA update
@@ -100,6 +99,7 @@ static void writeImageToFile(const char *name, uint8_t *in_buffer, size_t size);
 static void showMessageWithLogo(MSG message_type);
 static void showMessageWithLogo(MSG message_type, String friendly_id, bool id, const char *fw_version, String message);
 static void showMessageWithLogo(MSG message_type, const ApiSetupResponse &apiResponse);
+static void showMessageWithLogo(MSG message_type, const String &message);
 static void wifiErrorDeepSleep();
 static uint8_t *storedLogoOrDefault(int iType);
 static const uint8_t *storedBrandQR(void);
@@ -332,6 +332,13 @@ void bl_init(void)
   // EPD clear
   Log.info("%s [%d]: Display init\r\n", __FILE__, __LINE__);
   display_init();
+  // The brand frames every screen the firmware draws itself needs — the foot
+  // lockup, the setup QR, the Wi-Fi sentence — handed over before any of them
+  // can be drawn. They were set on the portal path alone until 2026-09-19, so
+  // a wake on saved Wi-Fi drew its screens on the stock layout.
+  display_set_brand_qr(storedBrandQR());
+  display_set_brand_foot(storedBrandFoot());
+  display_set_brand_wifi(storedBrandWifi());
 
   // Factory trigger. server/tools/factory-flash.sh preseeds `ship`=1 into NVS,
   // so a freshly flashed unit's first bench power-on blanks its glass and does
@@ -411,7 +418,8 @@ void bl_init(void)
     {
       if (current_msg != WIFI_FAILED)
       {
-        showMessageWithLogo(WIFI_FAILED);
+        // The screen names the network it looked for, under the sentence.
+        showMessageWithLogo(WIFI_FAILED, WifiCaptivePortal.lastSsid());
         current_msg = WIFI_FAILED;
       }
 
@@ -428,9 +436,6 @@ void bl_init(void)
 
     Log_info("FW version %s", FW_VERSION_STRING);
 
-    display_set_brand_qr(storedBrandQR());
-    display_set_brand_foot(storedBrandFoot());
-    display_set_brand_wifi(storedBrandWifi());
     showMessageWithLogo(WIFI_CONNECT, "", false, FW_VERSION_STRING, "");
     WifiCaptivePortal.setResetSettingsCallback(resetDeviceCredentials);
     res = WifiCaptivePortal.startPortal();
@@ -438,7 +443,7 @@ void bl_init(void)
     {
       WiFi.disconnect(true);
 
-      showMessageWithLogo(WIFI_FAILED);
+      showMessageWithLogo(WIFI_FAILED, WifiCaptivePortal.lastSsid());
 
       Log_error("Failed to connect or hit timeout");
 
@@ -542,9 +547,10 @@ void bl_init(void)
 
   if (request_result == HTTPS_NO_REGISTER && need_to_refresh_display == 1)
   {
-    // show the image
-    String friendly_id = preferences.getString(PREFERENCES_FRIENDLY_ID, PREFERENCES_FRIENDLY_ID_DEFAULT);
-    showMessageWithLogo(FRIENDLY_ID, friendly_id, true, "", String(message_buffer));
+    // Stock drew "sign up with Friendly ID" here. A 202 never comes from
+    // ertale.com, whose claim screen is the image the poll carries, so the
+    // glass keeps what it has (owner, 2026-09-19).
+    Log_info("server answered 202 (unregistered); keeping the screen");
     need_to_refresh_display = 0;
   }
 
@@ -1808,134 +1814,18 @@ static bool performApiSetup()
 }
 
 /**
- * @brief Downloads and displays the setup image from the API response
- * @return none
- */
-static void downloadSetupImage()
-{
-  status = false;
-  Log.info("%s [%d]: filename - %s\r\n", __FILE__, __LINE__, filename);
-
-  withHttp(filename, [&](HTTPClient *https, HttpError error) -> bool
-           {
-    if (error != HttpError::HTTPCLIENT_SUCCESS)
-    {
-      if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-      {
-        showMessageWithLogo(API_IMAGE_DOWNLOAD_ERROR);
-      }
-      else
-      {
-        showMessageWithLogo(WIFI_WEAK);
-      }
-      Log_error_submit("[HTTPS] Unable to connect");
-      return false;
-    }
-
-    https->setTimeout(15000);
-    https->setConnectTimeout(15000);
-
-    Log.info("%s [%d]: [HTTPS] Request to %s\r\n", __FILE__, __LINE__, filename);
-    Log.info("%s [%d]: [HTTPS] GET..\r\n", __FILE__, __LINE__);
-
-    int httpCode = https->GET();
-
-    if(httpCode == HTTP_CODE_PERMANENT_REDIRECT ||httpCode == HTTP_CODE_TEMPORARY_REDIRECT){
-              https->end();
-              https->begin(https->getLocation());
-              Log_info("Redirected to: %s", https->getLocation().c_str());
-              https->setTimeout(15000);
-              https->setConnectTimeout(15000);
-              httpCode = https->GET();
-            }
-
-    // httpCode will be negative on error
-    if (httpCode <= 0)
-    {
-      if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-      {
-        showMessageWithLogo(API_IMAGE_DOWNLOAD_ERROR);
-      }
-      else
-      {
-        showMessageWithLogo(WIFI_WEAK);
-      }
-      Log_error_submit("[HTTPS] GET... failed, error: %s", https->errorToString(httpCode).c_str());
-      return false;
-    }
-
-    // HTTP header has been send and Server response header has been handled
-    Log.error("%s [%d]: [HTTPS] GET... code: %d\r\n", __FILE__, __LINE__, httpCode);
-    
-    // file found at server
-    if (httpCode != HTTP_CODE_OK && httpCode != HTTP_CODE_MOVED_PERMANENTLY)
-    {
-      if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-      {
-        showMessageWithLogo(API_IMAGE_DOWNLOAD_ERROR);
-      }
-      else
-      {
-        showMessageWithLogo(WIFI_WEAK);
-      }
-      Log_error_submit("[HTTPS] GET... failed, error: %s", https->errorToString(httpCode).c_str());
-      return false;
-    }
-
-    Log.info("%s [%d]: Content size: %d\r\n", __FILE__, __LINE__, https->getSize());
-
-    WiFiClient *stream = https->getStreamPtr();
-
-    uint32_t counter = 0;
-    // Read and save BMP data to buffer
-    buffer = (uint8_t *)malloc(https->getSize());
-    if (stream->available() && https->getSize() == DISPLAY_BMP_IMAGE_SIZE)
-    {
-      counter = downloadStream(stream, DISPLAY_BMP_IMAGE_SIZE, buffer);
-    }
-    
-    if (counter == DISPLAY_BMP_IMAGE_SIZE)
-    {
-      Log.info("%s [%d]: Received successfully\r\n", __FILE__, __LINE__);
-
-      writeImageToFile("/logo.bmp", buffer, DEFAULT_IMAGE_SIZE);
-
-      // show the image
-      String friendly_id = preferences.getString(PREFERENCES_FRIENDLY_ID, PREFERENCES_FRIENDLY_ID_DEFAULT);
-      display_show_msg(storedLogoOrDefault(0), FRIENDLY_ID, friendly_id, true, "", String(message_buffer));
-      need_to_refresh_display = 0;
-    }
-    else
-    {
-      free(buffer);
-      buffer = nullptr;
-      if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-      {
-        showMessageWithLogo(API_SIZE_ERROR);
-      }
-      else
-      {
-        showMessageWithLogo(WIFI_WEAK);
-      }
-      Log_error_submit("Receiving failed. Read: %d", counter);
-    }
-    
-    return true; });
-}
-
-/**
  * @brief Function to getting the friendly id and API key
  * @return none
  */
 static void getDeviceCredentials()
 {
-  bool shouldDownloadImage = performApiSetup();
-
+  // Only the credentials. Stock went on to fetch /api/setup's image_url and
+  // demand a 48062-byte BMP of it; ours is a PNG, so every first contact drew
+  // "WiFi connected, content incomplete" until the /api/display poll that
+  // follows painted the claim screen over it (owner, 2026-09-19). That poll
+  // is where the claim screen comes from, so the setup image is not fetched.
+  performApiSetup();
   Log.info("%s [%d]: status - %d\r\n", __FILE__, __LINE__, status);
-  if (shouldDownloadImage)
-  {
-    downloadSetupImage();
-  }
 }
 
 /**
@@ -2018,6 +1908,7 @@ static void checkAndPerformFirmwareUpdate(void)
                {
                  showMessageWithLogo(WIFI_WEAK);
                }
+               return false;   // https may be null here; the GET below would fault
              }
 
              int httpCode = https->GET();
@@ -2351,6 +2242,13 @@ static void showMessageWithLogo(MSG message_type, String friendly_id, bool id, c
 static void showMessageWithLogo(MSG message_type)
 {
   display_show_msg(storedLogoOrDefault(0), message_type);
+}
+
+// The same, with a line the screen shows under its sentence (the network's
+// name on the Wi-Fi-failed screen); none of the setup-screen side effects.
+static void showMessageWithLogo(MSG message_type, const String &message)
+{
+  display_show_msg(storedLogoOrDefault(0), message_type, "", false, FW_VERSION_STRING, message);
 }
 
 /**
