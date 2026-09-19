@@ -567,65 +567,33 @@ void bl_init(void)
     checkAndPerformFirmwareUpdate();
   }
 
-  // error handling
+  // error handling. No screen for any failure after Wi-Fi joined (owner,
+  // 2026-09-18, after "WiFi connected, unable connect to API" and "WiFi
+  // connected, content incomplete" flashed up during unit #2's first setup
+  // and went away on the retry: "if wifi is not connected it should show the
+  // first step. if wifi is connected it should show the second step"): the
+  // glass keeps what it has, the log says what happened, and the next wake
+  // says the rest.
   switch (request_result)
   {
   case HTTPS_REQUEST_FAILED:
-  {
-    if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-    {
-      // No screen for this (owner, 2026-09-18, after one flashed up during
-      // unit #2's first setup: "if wifi is not connected it should show the
-      // first step. if wifi is connected it should show the second step"):
-      // the glass keeps what it has, and the next wake says the rest.
-      Log_error("API request failed; keeping the screen, retrying on the next wake");
-    }
-    else
-    {
-      showMessageWithLogo(WIFI_WEAK);
-    }
-  }
-  break;
+    Log_error("API request failed (RSSI %d); keeping the screen, retrying on the next wake", WiFi.RSSI());
+    break;
   case HTTPS_RESPONSE_CODE_INVALID:
-  {
-    showMessageWithLogo(WIFI_INTERNAL_ERROR);
-  }
-  break;
+    Log_error("API answered with an invalid response code; keeping the screen, retrying on the next wake");
+    break;
   case HTTPS_UNABLE_TO_CONNECT:
-  {
-    if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-    {
-      // As above: no screen, keep the glass, retry on the next wake.
-      Log_error("unable to connect to the API; keeping the screen, retrying on the next wake");
-    }
-    else
-    {
-      showMessageWithLogo(WIFI_WEAK);
-    }
-  }
-  break;
+    Log_error("unable to connect to the API (RSSI %d); keeping the screen, retrying on the next wake", WiFi.RSSI());
+    break;
   case HTTPS_WRONG_IMAGE_FORMAT:
-  {
-    showMessageWithLogo(MSG_FORMAT_ERROR);
-  }
-  break;
+    Log_error("image in an unexpected format; keeping the screen, retrying on the next wake");
+    break;
   case HTTPS_WRONG_IMAGE_SIZE:
-  {
-    if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
-    {
-      showMessageWithLogo(API_SIZE_ERROR);
-    }
-    else
-    {
-      showMessageWithLogo(WIFI_WEAK);
-    }
-  }
-  break;
+    Log_error("image incomplete (RSSI %d); keeping the screen, retrying on the next wake", WiFi.RSSI());
+    break;
   case HTTPS_CLIENT_FAILED:
-  {
-    showMessageWithLogo(WIFI_INTERNAL_ERROR);
-  }
-  break;
+    Log_error("HTTPS client failed; keeping the screen, retrying on the next wake");
+    break;
   case HTTPS_PLUGIN_NOT_ATTACHED:
   {
     if (preferences.getInt(PREFERENCES_SLEEP_TIME_KEY, 0) != SLEEP_TIME_WHILE_PLUGIN_NOT_ATTACHED)
