@@ -6,6 +6,7 @@
 #include <types.h>
 #include <ArduinoLog.h>
 #include <WifiCaptive.h>
+#include <string_utils.h>
 #include <pins.h>
 #include <config.h>
 #include <HTTPClient.h>
@@ -709,19 +710,14 @@ ApiDisplayInputs loadApiDisplayInputs(Preferences &preferences)
 static https_request_err_e downloadAndShow()
 {
   IPAddress serverIP;
-  String apiHostname = preferences.getString(PREFERENCES_API_URL, API_BASE_URL);
-  apiHostname.replace("https://", "");
-  apiHostname.replace("http://", "");
-  apiHostname.replace("/", "");
-
-  int colon = apiHostname.indexOf(':');
-  if (colon != -1) {
-    apiHostname = apiHostname.substring(0, colon);
-  }
+  // The host alone (string_utils.h api_hostname): the path-suffixed server
+  // URL this product uses used to come out as "ertale.comtarik" here.
+  char apiHostname[128];
+  api_hostname(preferences.getString(PREFERENCES_API_URL, API_BASE_URL).c_str(), apiHostname, sizeof(apiHostname));
 
   for (int attempt = 1; attempt <= 5; ++attempt)
   {
-    if (WiFi.hostByName(apiHostname.c_str(), serverIP) == 1)
+    if (WiFi.hostByName(apiHostname, serverIP) == 1)
     {
       Log.info("%s [%d]: Hostname resolved to %s on attempt %d\r\n", __FILE__, __LINE__, serverIP.toString().c_str(), attempt);
       break;
