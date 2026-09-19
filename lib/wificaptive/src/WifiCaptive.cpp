@@ -23,8 +23,8 @@ bool WifiCaptive::startPortal()
 
     // Define the subnet mask for the WiFi network
     const IPAddress subnetMask(255, 255, 255, 0);
-    const IPAddress localIP(10, 254, 0, 1);
-    const IPAddress gatewayIP(10, 254, 0, 1);
+    const IPAddress localIP(WIFI_PORTAL_IP);   // wifi-types.h, with the URL the screen prints
+    const IPAddress gatewayIP(WIFI_PORTAL_IP);
 
     WiFi.disconnect();
     delay(50);

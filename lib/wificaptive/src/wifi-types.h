@@ -43,3 +43,11 @@ struct WifiConnectionResult
     wl_status_t status;
     WifiEventData eventData;
 };
+
+// The portal's address. The AP takes it (WifiCaptive.cpp), the redirects
+// point at it (WebServer.h LocalIPURL) and the setup screen prints it
+// (display.cpp), so none of them can disagree. It is printed because the
+// captive popup does not always come, and a phone that types it must use
+// http:// — unit #2's first setup (2026-09-18) went nowhere over https.
+#define WIFI_PORTAL_IP 10, 254, 0, 1
+#define WIFI_PORTAL_URL "http://10.254.0.1"

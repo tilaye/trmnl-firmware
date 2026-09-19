@@ -103,6 +103,7 @@ static void wifiErrorDeepSleep();
 static uint8_t *storedLogoOrDefault(int iType);
 static const uint8_t *storedBrandQR(void);
 static const uint8_t *storedBrandFoot(void);
+static const uint8_t *storedBrandWifi(void);
 static bool checkCurrentFileName(String &newName);
 static DeviceStatusStamp getDeviceStatusStamp();
 void log_nvs_usage();
@@ -428,6 +429,7 @@ void bl_init(void)
 
     display_set_brand_qr(storedBrandQR());
     display_set_brand_foot(storedBrandFoot());
+    display_set_brand_wifi(storedBrandWifi());
     showMessageWithLogo(WIFI_CONNECT, "", false, FW_VERSION_STRING, "");
     WifiCaptivePortal.setResetSettingsCallback(resetDeviceCredentials);
     res = WifiCaptivePortal.startPortal();
@@ -2467,6 +2469,15 @@ static const uint8_t *storedBrandQR(void)
 static const uint8_t *storedBrandFoot(void)
 {
    return brandFrame(3);
+}
+
+// The Wi-Fi screen's instruction in Amharic (2026-09-18), after the foot: the
+// panel fonts have no Ethiopic, so brand-blob.php draws the two lines and the
+// screen shows the picture. NULL from an older blob, and the screen sets the
+// English lines itself.
+static const uint8_t *storedBrandWifi(void)
+{
+   return brandFrame(4);
 }
 
 static uint8_t *storedLogoOrDefault(int iType)
