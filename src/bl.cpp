@@ -574,7 +574,11 @@ void bl_init(void)
   {
     if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
     {
-      showMessageWithLogo(API_REQUEST_FAILED);
+      // No screen for this (owner, 2026-09-18, after one flashed up during
+      // unit #2's first setup: "if wifi is not connected it should show the
+      // first step. if wifi is connected it should show the second step"):
+      // the glass keeps what it has, and the next wake says the rest.
+      Log_error("API request failed; keeping the screen, retrying on the next wake");
     }
     else
     {
@@ -591,7 +595,8 @@ void bl_init(void)
   {
     if (WiFi.RSSI() > WIFI_CONNECTION_RSSI)
     {
-      showMessageWithLogo(API_UNABLE_TO_CONNECT);
+      // As above: no screen, keep the glass, retry on the next wake.
+      Log_error("unable to connect to the API; keeping the screen, retrying on the next wake");
     }
     else
     {
